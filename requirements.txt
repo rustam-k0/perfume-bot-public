@@ -1,0 +1,6 @@
+flask
+telebot
+python-dotenv
+psycopg2-binary
+rapidfuzz
+unidecode
