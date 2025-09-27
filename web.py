@@ -6,7 +6,7 @@ import telebot
 from telebot import types 
 from dotenv import load_dotenv
 
-from database import get_connection, get_copies_by_original_id, log_message, init_db_if_not_exists
+from database import get_connection, get_copies_by_original_id, log_message, init_db_if_not_exists # <-- Убраны функции get/set_user_language
 from search import find_original
 from formatter import format_response, welcome_text
 from followup import schedule_followup_once
@@ -15,6 +15,8 @@ from i18n import DEFAULT_LANG, get_message
 # --- Загружаем переменные окружения ---
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 if not BOT_TOKEN:
@@ -24,15 +26,12 @@ if not WEBHOOK_URL:
 
 # --- Инициализация бота, базы данных и хранилища языка ---
 bot = telebot.TeleBot(BOT_TOKEN)
-try:
-    conn = get_connection() 
-    init_db_if_not_exists(conn)
-except Exception as e:
-    print(f"FATAL ERROR: Не удалось подключиться к БД: {e}")
-    raise
+conn = get_connection() 
+init_db_if_not_exists(conn)
 
 last_user_ts = {}
 followup_sent = {}
+# 🌟 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: ХРАНИМ ЯЗЫК В СЛОВАРЕ В ПАМЯТИ
 user_language_map = {} 
 
 
@@ -40,73 +39,87 @@ user_language_map = {}
 def get_language_keyboard(lang=DEFAULT_LANG):
     """Создает Inline-клавиатуру для выбора языка."""
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"))
-    markup.add(types.InlineKeyboardButton("🇬🇧 English", callback_data="lang_en"))
-    
-    start_text = get_message("button_start", lang)
-    markup.add(types.InlineKeyboardButton(start_text, callback_data="start_command"))
+    ru_button = types.InlineKeyboardButton(
+        get_message("button_lang_ru", lang), 
+        callback_data="lang:ru"
+    )
+    en_button = types.InlineKeyboardButton(
+        get_message("button_lang_en", lang), 
+        callback_data="lang:en"
+    )
+    markup.add(en_button, ru_button)
     return markup
 
 
-@bot.message_handler(commands=['start'])
-def handle_start(msg):
-    log_message(conn, msg.chat.id, '/start', 'start_command')
+# --- Хендлер команды /start и /help ---
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(msg):
+    chat_id = msg.chat.id
+    # 1. Получаем язык из словаря или по умолчанию
+    lang = user_language_map.get(chat_id, DEFAULT_LANG) 
     
-    last_user_ts[msg.chat.id] = time.time()
-    followup_sent[msg.chat.id] = False
+    log_message(conn, chat_id, msg.text, 'start_command')
     
-    lang = user_language_map.get(msg.chat.id, DEFAULT_LANG)
-
+    welcome_msg = welcome_text(lang=lang)
+    
     bot.send_message(
-        msg.chat.id, 
-        welcome_text(lang), 
-        reply_markup=get_language_keyboard(lang),
-        parse_mode='Markdown'
+        chat_id, 
+        welcome_msg, 
+        parse_mode='Markdown', 
+        reply_markup=get_language_keyboard(lang)
     )
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('lang_'))
-def handle_lang_callback(call):
+
+# --- Хендлер для обработки нажатия Inline-кнопки (Сохранение языка!) ---
+@bot.callback_query_handler(func=lambda call: call.data.startswith('lang:'))
+def callback_inline_language(call):
     chat_id = call.message.chat.id
-    new_lang = call.data.split('_')[1]
+    new_lang = call.data.split(':')[1]
     
+    # 🌟 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: СОХРАНЯЕМ ВЫБОР В СЛОВАРЕ
     user_language_map[chat_id] = new_lang
     
-    message_text = get_message("language_changed", new_lang).format(lang_code=new_lang.upper())
+    welcome_msg = welcome_text(lang=new_lang)
     
-    bot.edit_message_text(
-        chat_id=chat_id,
-        message_id=call.message.message_id,
-        text=message_text,
-        reply_markup=get_language_keyboard(new_lang),
-        parse_mode='Markdown'
-    )
-    bot.answer_callback_query(call.id)
-    
-@bot.callback_query_handler(func=lambda call: call.data == 'start_command')
-def handle_start_callback(call):
-    chat_id = call.message.chat.id
-    lang = user_language_map.get(chat_id, DEFAULT_LANG)
-    
-    bot.edit_message_text(
-        chat_id=chat_id,
-        message_id=call.message.message_id,
-        text=get_message("prompt_search", lang),
-        reply_markup=None
-    )
-    bot.answer_callback_query(call.id)
+    try:
+        # Убираем кнопки и обновляем текст на выбранном языке
+        bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            text=welcome_msg,
+            parse_mode='Markdown',
+            reply_markup=None 
+        )
+    except Exception as e:
+        print(f"Error editing message: {e}")
+        bot.send_message(chat_id, welcome_msg, parse_mode='Markdown')
+        
+    confirm_msg = get_message("confirm_lang_set", new_lang)
+    bot.answer_callback_query(call.id, text=confirm_msg)
 
 
-@bot.message_handler(content_types=['text'])
-def handle_text(msg):
+# --- Хендлер текстовых сообщений (Использование сохраненного языка!) ---
+@bot.message_handler(func=lambda msg: True)
+def handle_message(msg):
     chat_id = msg.chat.id
-    now = time.time()
+    user_text = msg.text.strip()
+    now = int(time.time())
+    
+    # 🌟 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: ПОЛУЧАЕМ ЯЗЫК ИЗ СЛОВАРЯ
+    lang = user_language_map.get(chat_id, DEFAULT_LANG) 
+    
     last_user_ts[chat_id] = now
     followup_sent[chat_id] = False
+    
+    if not user_text:
+        error_msg = get_message("error_empty_query", lang)
+        log_message(conn, msg.chat.id, msg.text, 'fail', 'Empty query')
+        bot.reply_to(msg, error_msg, parse_mode='Markdown') 
+        return
 
-    lang = user_language_map.get(chat_id, DEFAULT_LANG)
-    result = find_original(conn, msg.text, lang=lang)
+    result = find_original(conn, user_text, lang=lang) 
 
-    if not result['ok']:
+    if not result["ok"]:
         log_message(conn, msg.chat.id, msg.text, 'fail', result['message'])
         bot.reply_to(msg, result['message'], parse_mode='Markdown') 
         return
@@ -133,7 +146,6 @@ def handle_text(msg):
 
     schedule_followup_once(bot, chat_id, now, last_user_ts, followup_sent, lang=lang)
 
-
 # --- Flask веб-сервер ---
 app = Flask(__name__)
 
@@ -145,15 +157,10 @@ def index():
 def webhook():
     json_str = request.get_data().decode("utf-8")
     update = telebot.types.Update.de_json(json_str)
-    
-    if not bot.get_webhook_info().url:
-        bot.set_webhook(url=WEBHOOK_URL)
-        
     bot.process_new_updates([update])
-    return "ok", 200
+    return "!", 200
 
-# Если запускается локально
 if __name__ == '__main__':
-    bot.remove_webhook()
-    print("Starting bot in polling mode...")
-    bot.infinity_polling()
+    print(f"Starting bot with default language: {DEFAULT_LANG}")
+    port = int(os.getenv("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
