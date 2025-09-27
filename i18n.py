@@ -6,6 +6,11 @@ DEFAULT_LANG = "ru"
 
 MESSAGES = {
     "ru": {
+        # --- НОВЫЕ КЛЮЧИ ДЛЯ ВЫБОРА ЯЗЫКА ---
+        "button_lang_en": "English 🇬🇧",
+        "button_lang_ru": "Русский 🇷🇺",
+        "confirm_lang_set": "Язык изменен на Русский!",
+        
         # web.py / formatter.py (Welcome)
         "welcome": (
             "Привет👋 Я помогу найти доступные **аналоги** дорогого парфюма.\n\n"
@@ -29,14 +34,18 @@ MESSAGES = {
         "response_not_found_copies": (
             "Мне не удалось найти подходящие аналоги. Попробуйте ввести данные целиком (**Бренд + Название**) или поищите другой аромат. 😣"
         ),
-        "response_search_link_prefix": "купить", # Часть ссылки [купить]
+        "response_search_link_prefix": "купить", 
         "response_close": "Надеюсь, информация была полезной! ✨ Готовы попробовать еще раз?",
         "response_note_prefix": "**🤖 Внимание:** ",
-        # НОВОЕ: Слово, используемое в Google-запросе для покупки
-        "search_query_buy_word": "купить"
+        "search_query_buy_word": "купить" # Для запроса Google
     },
     
     "en": {
+        # --- НОВЫЕ КЛЮЧИ ДЛЯ ВЫБОРА ЯЗЫКА ---
+        "button_lang_en": "English 🇬🇧",
+        "button_lang_ru": "Русский 🇷🇺",
+        "confirm_lang_set": "Language switched to English!",
+        
         # web.py / formatter.py (Welcome)
         "welcome": (
             "Hey there! 👋 I can help you find affordable **dupes** for expensive perfumes.\n\n"
@@ -60,11 +69,10 @@ MESSAGES = {
         "response_not_found_copies": (
             "I couldn't find any suitable dupes. Try entering the full details (**Brand + Name**) or search for a different fragrance. 😣"
         ),
-        "response_search_link_prefix": "buy", # Часть ссылки [buy]
+        "response_search_link_prefix": "buy", 
         "response_close": "Hope the info was helpful! ✨ Wanna try again?",
         "response_note_prefix": "**🤖 Attention:** ",
-        # НОВОЕ: Слово, используемое в Google-запросе для покупки
-        "search_query_buy_word": "buy"
+        "search_query_buy_word": "buy" # Для запроса Google
     }
 }
 
