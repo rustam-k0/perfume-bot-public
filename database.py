@@ -124,3 +124,28 @@ def log_message(conn, user_id, message, status, notes=""):
         (user_id, current_time, message, status, notes),
     )
     conn.commit()
+
+    # database.py
+
+# ... (существующие функции) ...
+
+def fetch_messages_by_user_id(conn, user_id: int):
+    """
+    Извлекает все логи сообщений для указанного user_id.
+    """
+    cursor = conn.cursor()
+    
+    # Используем BIGINT для user_id (согласно структуре PostgreSQL/DB)
+    # и сортируем по времени, чтобы видеть историю
+    query = """
+    SELECT timestamp, message, status, notes 
+    FROM UserMessages 
+    WHERE user_id = %s 
+    ORDER BY timestamp ASC
+    """
+    
+    # %s — это плейсхолдер для PostgreSQL
+    cursor.execute(query, (user_id,)) 
+    
+    # Возвращаем все найденные строки
+    return cursor.fetchall()
