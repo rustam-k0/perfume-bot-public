@@ -6,8 +6,8 @@ import telebot
 from telebot import types 
 from dotenv import load_dotenv
 
-from database import get_connection, get_copies_by_original_id, log_message, init_db_if_not_exists # <-- Убраны функции get/set_user_language
-from search import find_original
+from database import get_connection, get_copies_by_original_id, log_message, init_db_if_not_exists 
+from search import find_original, _load_catalog # <-- 1. КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: ИМПОРТ _load_catalog
 from formatter import format_response, welcome_text
 from followup import schedule_followup_once
 from i18n import DEFAULT_LANG, get_message
@@ -15,8 +15,6 @@ from i18n import DEFAULT_LANG, get_message
 # --- Загружаем переменные окружения ---
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 if not BOT_TOKEN:
@@ -24,14 +22,33 @@ if not BOT_TOKEN:
 if not WEBHOOK_URL:
     raise ValueError("WEBHOOK_URL не указан в .env!")
 
-# --- Инициализация бота, базы данных и хранилища языка ---
+# --- Инициализация бота, базы данных, Webhook и загрузка каталога ---
 bot = telebot.TeleBot(BOT_TOKEN)
-conn = get_connection() 
-init_db_if_not_exists(conn)
+
+try:
+    # 1. Устанавливаем соединение с БД и инициализируем таблицы
+    conn = get_connection() 
+    init_db_if_not_exists(conn)
+    
+    # 2. 🔥 КРИТИЧЕСКИ ВАЖНО: Загружаем каталог в память для поиска
+    print("Загрузка каталога в память...")
+    _load_catalog(conn)
+    print("✅ Каталог успешно загружен.")
+    
+    # 3. 🔥 КРИТИЧЕСКИ ВАЖНО: Устанавливаем Webhook для Telegram
+    # Render предоставляет WEBHOOK_URL, который указывает на ваш запущенный сервис
+    bot.set_webhook(url=WEBHOOK_URL)
+    print(f"✅ Webhook установлен на URL: {WEBHOOK_URL}")
+
+except Exception as e:
+    # Если здесь ошибка, бот не запустится, и Render это увидит
+    error_msg = f"FATAL ERROR: Не удалось подключиться к БД, загрузить каталог или настроить Webhook: {e}"
+    print(error_msg)
+    raise Exception(error_msg) # Вызываем исключение для остановки сервиса
 
 last_user_ts = {}
 followup_sent = {}
-# 🌟 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: ХРАНИМ ЯЗЫК В СЛОВАРЕ В ПАМЯТИ
+# КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: ХРАНИМ ЯЗЫК В СЛОВАРЕ В ПАМЯТИ
 user_language_map = {} 
 
 
@@ -76,7 +93,7 @@ def callback_inline_language(call):
     chat_id = call.message.chat.id
     new_lang = call.data.split(':')[1]
     
-    # 🌟 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: СОХРАНЯЕМ ВЫБОР В СЛОВАРЕ
+    # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: СОХРАНЯЕМ ВЫБОР В СЛОВАРЕ
     user_language_map[chat_id] = new_lang
     
     welcome_msg = welcome_text(lang=new_lang)
@@ -105,7 +122,7 @@ def handle_message(msg):
     user_text = msg.text.strip()
     now = int(time.time())
     
-    # 🌟 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: ПОЛУЧАЕМ ЯЗЫК ИЗ СЛОВАРЯ
+    # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: ПОЛУЧАЕМ ЯЗЫК ИЗ СЛОВАРЯ
     lang = user_language_map.get(chat_id, DEFAULT_LANG) 
     
     last_user_ts[chat_id] = now
@@ -117,6 +134,7 @@ def handle_message(msg):
         bot.reply_to(msg, error_msg, parse_mode='Markdown') 
         return
 
+    # conn используется для поиска по клонам, если нужно
     result = find_original(conn, user_text, lang=lang) 
 
     if not result["ok"]:
@@ -146,6 +164,7 @@ def handle_message(msg):
 
     schedule_followup_once(bot, chat_id, now, last_user_ts, followup_sent, lang=lang)
 
+
 # --- Flask веб-сервер ---
 app = Flask(__name__)
 
@@ -157,10 +176,13 @@ def index():
 def webhook():
     json_str = request.get_data().decode("utf-8")
     update = telebot.types.Update.de_json(json_str)
+    # Обрабатываем входящее сообщение от Telegram
     bot.process_new_updates([update])
     return "!", 200
 
+# 🌟 ИСПРАВЛЕНИЕ ЗАПУСКА ДЛЯ RENDER
 if __name__ == '__main__':
     print(f"Starting bot with default language: {DEFAULT_LANG}")
+    # Используем порт из переменной окружения Render (по умолчанию 10000)
     port = int(os.getenv("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
