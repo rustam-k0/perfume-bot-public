@@ -1,80 +1,38 @@
-# database.py (Финальная версия для PostgreSQL)
+# perfume-bot/database.py
 import os
 import time
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
 
-# Загружаем переменную окружения DATABASE_URL
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# --- ГЛАВНЫЕ ФУНКЦИИ БАЗЫ ДАННЫХ ---
-
 def get_connection(db_url=DATABASE_URL):
-    """
-    Устанавливает соединение с PostgreSQL, используя URL из переменных окружения.
-    """
     if not db_url:
-        # Это сработает, если Render не настроил переменную
         raise ConnectionError("DATABASE_URL не указан! Проверьте настройки Render.")
-    
-    # 1. Подключение к PostgreSQL по URL
     conn = psycopg2.connect(db_url)
-    
-    # 2. Настройка: DictCursor возвращает строки в виде словарей
     conn.cursor_factory = psycopg2.extras.DictCursor
     return conn
 
 def init_db_if_not_exists(conn):
-    """
-    Инициализирует базу данных, создавая все необходимые таблицы.
-    """
     cursor = conn.cursor()
-
-    # Таблица для логов сообщений (UserMessages)
-    # ИЗМЕНЕНИЯ: SERIAL PRIMARY KEY, BIGINT для user_id, TIMESTAMP
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS UserMessages (
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT NOT NULL, 
-            timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
-            message TEXT NOT NULL,
-            status TEXT NOT NULL, 
-            notes TEXT
-        )
-    """)
-
-    # Таблица для оригиналов (OriginalPerfume)
+            id SERIAL PRIMARY KEY, user_id BIGINT NOT NULL, 
+            timestamp TIMESTAMP WITH TIME ZONE NOT NULL, message TEXT NOT NULL,
+            status TEXT NOT NULL, notes TEXT )""")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS OriginalPerfume (
-            id TEXT PRIMARY KEY,
-            brand TEXT,
-            name TEXT,
-            price_eur REAL,
-            url TEXT
-        )
-    """)
-
-    # Таблица для клонов (CopyPerfume)
+            id TEXT PRIMARY KEY, brand TEXT, name TEXT,
+            price_eur REAL, url TEXT )""")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS CopyPerfume (
-            id TEXT PRIMARY KEY,
-            original_id TEXT,
-            brand TEXT,
-            name TEXT,
-            price_eur REAL,
-            url TEXT,
-            notes TEXT,
-            saved_amount REAL,
-            FOREIGN KEY(original_id) REFERENCES OriginalPerfume(id)
-        )
-    """)
-
+            id TEXT PRIMARY KEY, original_id TEXT, brand TEXT, name TEXT,
+            price_eur REAL, url TEXT, notes TEXT, saved_amount REAL,
+            FOREIGN KEY(original_id) REFERENCES OriginalPerfume(id) )""")
     conn.commit()
 
-
-# --- ФУНКЦИИ ВЫБОРКИ ДАННЫХ (SELECT) ---
 def _convert_dict_row(row):
     return dict(row) if row else None
 
@@ -90,7 +48,6 @@ def fetch_clones_for_search(conn):
 
 def fetch_original_by_id(conn, original_id):
     cur = conn.cursor()
-    # Используем %s как плейсхолдер для PostgreSQL
     cur.execute(
         "SELECT id, brand, name, price_eur, url FROM OriginalPerfume WHERE id = %s",
         (original_id,),
@@ -99,53 +56,65 @@ def fetch_original_by_id(conn, original_id):
 
 def get_copies_by_original_id(conn, original_id):
     cur = conn.cursor()
-    # Используем %s как плейсхолдер для PostgreSQL
     cur.execute(
         "SELECT id, original_id, brand, name, price_eur, url, notes, saved_amount FROM CopyPerfume WHERE original_id = %s",
         (original_id,),
     )
     return [_convert_dict_row(row) for row in cur.fetchall()]
 
-# --- ФУНКЦИЯ ЛОГИРОВАНИЯ (INSERT) ---
-
 def log_message(conn, user_id, message, status, notes=""):
-    """
-    Логирует сообщение пользователя в таблицу UserMessages.
-    """
     cursor = conn.cursor()
     current_time = time.time()
-    
     cursor.execute(
-        """
-        INSERT INTO UserMessages (user_id, timestamp, message, status, notes)
-        VALUES (%s, to_timestamp(%s), %s, %s, %s)
-        """,
-        # to_timestamp() преобразует UNIX time (float/int) в формат TIMESTAMP PostgreSQL
+        "INSERT INTO UserMessages (user_id, timestamp, message, status, notes) VALUES (%s, to_timestamp(%s), %s, %s, %s)",
         (user_id, current_time, message, status, notes),
     )
     conn.commit()
 
-    # database.py
+# --- НОВЫЕ ФУНКЦИИ ---
 
-# ... (существующие функции) ...
-
-def fetch_messages_by_user_id(conn, user_id: int):
-    """
-    Извлекает все логи сообщений для указанного user_id.
-    """
-    cursor = conn.cursor()
-    
-    # Используем BIGINT для user_id (согласно структуре PostgreSQL/DB)
-    # и сортируем по времени, чтобы видеть историю
+def fetch_user_history(conn, user_id: int, limit: int = 5):
+    """Извлекает последние N уникальных успешных поисков пользователя."""
+    cur = conn.cursor()
     query = """
-    SELECT timestamp, message, status, notes 
-    FROM UserMessages 
-    WHERE user_id = %s 
-    ORDER BY timestamp ASC
+        SELECT DISTINCT ON (notes) notes
+        FROM UserMessages
+        WHERE user_id = %s AND status = 'success' AND notes LIKE 'Found: %%'
+        ORDER BY notes, timestamp DESC
+        LIMIT %s
     """
-    
-    # %s — это плейсхолдер для PostgreSQL
-    cursor.execute(query, (user_id,)) 
-    
-    # Возвращаем все найденные строки
-    return cursor.fetchall()
+    cur.execute(query, (user_id, limit))
+    # Извлекаем только название парфюма из "notes"
+    history = []
+    for row in cur.fetchall():
+        try:
+            perfume = row['notes'].split('Found: ')[1].split(' | NOTE:')[0]
+            history.append(perfume)
+        except IndexError:
+            continue
+    return history
+
+
+def fetch_popular_originals(conn, limit: int = 10):
+    """Извлекает самые популярные оригиналы по количеству клонов."""
+    cur = conn.cursor()
+    query = """
+        SELECT o.brand, o.name, COUNT(c.id) AS clone_count
+        FROM OriginalPerfume o
+        JOIN CopyPerfume c ON o.id = c.original_id
+        GROUP BY o.id
+        ORDER BY clone_count DESC
+        LIMIT %s
+    """
+    cur.execute(query, (limit,))
+    return cur.fetchall()
+
+
+def fetch_random_original(conn):
+    """Извлекает случайный оригинал из базы данных."""
+    cur = conn.cursor()
+    # TABLESAMPLE SYSTEM (1) может быть неточным, но очень быстрым.
+    # ORDER BY RANDOM() медленнее на больших таблицах. Выбираем его для точности.
+    cur.execute("SELECT id, brand, name FROM OriginalPerfume ORDER BY RANDOM() LIMIT 1")
+    return _convert_dict_row(cur.fetchone())
+
