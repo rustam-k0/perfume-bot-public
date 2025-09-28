@@ -112,7 +112,7 @@ perfume-bot/
 2.  **Запустите скрипт:**
 
     ```bash
-    python analyze_db.py
+    python analytics.py
     ```
 
     Скрипт выведет:
