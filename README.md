@@ -109,13 +109,13 @@ gunicorn web:app
 
 ## 🔬 Database Analytics
 
-Use **`analyze_db.py`** for quick access to key data.
+Use **`analytics.py`** for quick access to key data.
 
 1. **Ensure `DATABASE_URL` is set** (see above).
 2. **Run the script:**
 
 ```bash
-python analyze_db.py
+python3 analytics.py
 ```
 
 The script outputs:
