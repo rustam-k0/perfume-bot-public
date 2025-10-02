@@ -1,11 +1,11 @@
 ```markdown
 # Perfume Twins
 
-A bot for searching perfumes and their popular clones, including savings calculation.
+A Telegram bot that finds expensive original perfumes and pairs them with budget-friendly clones. Includes savings calculation.
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 
@@ -26,100 +26,90 @@ perfume-bot/
 
 ---
 
-## 🗄️ Database Structure 
+## 🗄️ Database Structure
 
-The database consists of 3 tables:
+### 1. `UserMessages`  
+Logs user queries for analytics.
 
-### 1. `UserMessages` Table (Logging)
+| Column      | Type                      | Description                                  |
+| ----------- | ------------------------- | -------------------------------------------- |
+| `id`        | SERIAL PRIMARY KEY        | Unique ID                                    |
+| `user_id`   | BIGINT                    | Telegram user ID                             |
+| `timestamp` | TIMESTAMP WITH TIME ZONE  | Message time                                 |
+| `message`   | TEXT                      | Original message                             |
+| `status`    | TEXT                      | Query status (`success`, `fail`, `start`)    |
+| `notes`     | TEXT                      | Extra info (fuzzy match, error reason)       |
 
-Stores all user queries for analytics and error tracking.
+### 2. `OriginalPerfume`  
+Info about original perfumes.
 
-| Column      | Data Type                  | Description                                        |
-| ----------- | -------------------------- | -------------------------------------------------- |
-| `id`        | `SERIAL PRIMARY KEY`       | Unique ID                                          |
-| `user_id`   | `BIGINT`                   | Telegram user ID                                   |
-| `timestamp` | `TIMESTAMP WITH TIME ZONE` | Message timestamp                                  |
-| `message`   | `TEXT`                     | Original message text                              |
-| `status`    | `TEXT`                     | Status (e.g., `success`, `fail`, `start_command`)  |
-| `notes`     | `TEXT`                     | Additional notes (e.g., Fuzzy Match, error reason) |
+| Column      | Type           | Description               |
+| ----------- | -------------- | ------------------------- |
+| `id`        | TEXT PRIMARY KEY | Unique ID               |
+| `brand`     | TEXT           | Brand                     |
+| `name`      | TEXT           | Perfume name              |
+| `price_eur` | REAL           | Price in EUR              |
+| `url`       | TEXT           | Product page              |
 
-### 2. `OriginalPerfume` Table 
+### 3. `CopyPerfume`  
+Info about clones/alternatives.
 
-Stores information about expensive original perfumes.
-
-| Column      | Data Type          | Description                   |
-| ----------- | ------------------ | ----------------------------- |
-| `id`        | `TEXT PRIMARY KEY` | Unique ID (Primary Key)       |
-| `brand`     | `TEXT`             | Original brand                |
-| `name`      | `TEXT`             | Original name                 |
-| `price_eur` | `REAL`             | Price in euros                |
-| `url`       | `TEXT`             | Link to original product page |
-
-### 3. `CopyPerfume` Table (Clones/Alternatives)
-
-Stores information about perfume clones linked to originals.
-
-| Column         | Data Type          | Description             
-| -------------- | ------------------ | ------------------------------------------------------------------------ |
-| `id`           | `TEXT PRIMARY KEY` | Unique ID (Primary Key)                                                  |
-| `original_id`  | `TEXT`             | Link to `id` in `OriginalPerfume` (`FOREIGN KEY`)                        |
-| `brand`        | `TEXT`             | Clone brand                                                              |
-| `name`         | `TEXT`             | Clone name                                                               |
-| `price_eur`    | `REAL`             | Clone price in euros                                                     |
-| `url`          | `TEXT`             | Link to clone                                                            |
-| `notes`        | `TEXT`             | Notes about the fragrance                                                |
-| `saved_amount` | `REAL`             | Savings in %: `(orig_price_eur - dupe_price_eur) / orig_price_eur * 100` |
+| Column         | Type           | Description 
+| -------------- | -------------- | ----------
+| `id`           | TEXT PRIMARY KEY | Unique ID                            |
+| `original_id`  | TEXT           | FK to `OriginalPerfume.id`             |
+| `brand`        | TEXT           | Clone brand                            |
+| `name`         | TEXT           | Clone name                             |
+| `price_eur`    | REAL           | Price in EUR                           |
+| `url`          | TEXT           | Product link                           |
+| `notes`        | TEXT           | Extra notes                            |
+| `saved_amount` | REAL | Savings % `(orig - dupe) / orig * 100` |
 
 ---
 
-## 🚀 Running the Project
+## 🚀 How to Run
 
-1. **Install dependencies:**
-
-```bash
-pip install -r requirements.txt
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
 ````
 
-2. **Set environment variables:**
-   Create a `.env` file in the root directory and define **all** required variables.
+2. Create `.env` in the root and add settings:
 
-```
-# --- BOT SETTINGS ---
-BOT_TOKEN="YOUR_TOKEN_HERE"
-WEBHOOK_URL="YOUR_WEBHOOK_URL_ON_RENDER"
-BOT_LANG="ru"
+   ```
+   BOT_TOKEN="YOUR_TOKEN"
+   WEBHOOK_URL="YOUR_WEBHOOK_URL"
+   BOT_LANG="ru"
 
-# --- POSTGRESQL SETTINGS ---
-DATABASE_URL="postgresql://perfume_bot_public_posgresql_user:kIlMPx2gsC9uACxwMMk5KckZ4WaOsWit@dpg-d3c11k2li9vc73d6lee0-a/perfume_bot_public_posgresql"
-```
+   DATABASE_URL="postgresql://user:password@host/dbname"
+   ```
 
-3. **Run the bot:**
+3. Start bot:
 
-```bash
-gunicorn web:app
-```
+   ```bash
+   gunicorn web:app
+   ```
 
 ---
 
-## 🔬 Database Analytics
+## Analytics
 
-Use **`analytics.py`** for quick access to key data.
-
-1. Ensure `DATABASE_URL` is set.
-2. Run the script:
+Use `analytics.py` for stats.
 
 ```bash
 python3 analytics.py
 ```
 
-The script outputs:
+Outputs:
 
-* Total number of Originals and Clones
-* 5 most recently added perfumes
-* 5 clones with the highest savings
-* Overall user query statistics (`success`, `fail`, `start_command`)
-* 10 most recent **failed** queries
-* 10 most recent **successful but imprecise** queries (Fuzzy Match)
+* Total originals and clones
+* 5 latest perfumes
+* 5 clones with highest savings
+* Query stats (`success`, `fail`, `start`)
+* 10 last failed queries
+* 10 last fuzzy matches
 
 ```
+
+Хочешь, я сделаю ещё более минималистичный вариант — прям «для GitHub», максимум полстраницы?
 ```
