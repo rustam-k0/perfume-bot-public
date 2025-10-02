@@ -1,4 +1,3 @@
-# perfume-bot/web.py
 import os
 import time
 from flask import Flask, request
@@ -10,9 +9,8 @@ from search import find_original, _load_catalog
 from formatter import format_response, format_popular_list, format_history_list
 from i18n import DEFAULT_LANG, get_message
 from cache import get_cached_popular_perfumes, get_cached_user_history
-import keyboards # <-- Импортируем новый модуль клавиатур
+import keyboards
 
-# --- Загрузка окружения и инициализация ---
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
@@ -23,7 +21,6 @@ if not BOT_TOKEN or not WEBHOOK_URL:
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# --- Инициализация БД и каталога ---
 try:
     conn = get_connection()
     init_db_if_not_exists(conn)
@@ -37,11 +34,8 @@ except Exception as e:
     print(error_msg)
     raise
 
-# --- Хранилища в памяти ---
 user_language_map = {}
-user_states = {} # Простое управление состоянием: {chat_id: "awaiting_search_input"}
-
-# --- ФУНКЦИИ-ХЕНДЛЕРЫ ---
+user_states = {}
 
 def get_user_lang(chat_id):
     return user_language_map.get(chat_id, DEFAULT_LANG)
@@ -50,7 +44,7 @@ def get_user_lang(chat_id):
 def send_menu(message):
     chat_id = message.chat.id
     lang = get_user_lang(chat_id)
-    user_states.pop(chat_id, None) # Сбрасываем состояние пользователя
+    user_states.pop(chat_id, None)
     log_message(conn, chat_id, message.text, 'start_command')
     
     welcome_msg = get_message("welcome", lang)
@@ -87,7 +81,6 @@ def show_random(chat_id, lang):
     user_states.pop(chat_id, None)
     original = fetch_random_original(conn)
     if not original:
-        # Обработка случая, если база пуста
         bot.send_message(chat_id, "Sorry, I couldn't find any perfume.", reply_markup=keyboards.after_random_menu(lang))
         return
 
@@ -99,8 +92,6 @@ def show_random(chat_id, lang):
                      disable_web_page_preview=True,
                      reply_markup=keyboards.after_random_menu(lang))
 
-
-# --- ОБРАБОТЧИКИ НАЖАТИЙ КНОПОК (CALLBACKS) ---
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('lang:'))
 def handle_language_change(call):
@@ -121,9 +112,8 @@ def handle_main_menu(call):
     chat_id = call.message.chat.id
     action = call.data.split(':')[1]
     lang = get_user_lang(chat_id)
-    bot.answer_callback_query(call.id) # Просто подтверждаем получение
+    bot.answer_callback_query(call.id)
 
-    # Удаляем предыдущее сообщение с кнопками для чистоты интерфейса
     bot.delete_message(chat_id, call.message.message_id)
 
     if action == 'menu':
@@ -137,17 +127,14 @@ def handle_main_menu(call):
     elif action == 'random':
         show_random(chat_id, lang)
 
-# --- ГЛАВНЫЙ ОБРАБОТЧИК ТЕКСТОВЫХ СООБЩЕНИЙ ---
-
 @bot.message_handler(func=lambda msg: True)
 def handle_message(msg):
     chat_id = msg.chat.id
     user_text = msg.text.strip()
     lang = get_user_lang(chat_id)
 
-    # Проверяем, ожидает ли бот ввод для поиска
     if user_states.get(chat_id) != "awaiting_search_input":
-        send_menu(msg) # Если нет, просто показываем меню
+        send_menu(msg)
         return
 
     if not user_text:
@@ -156,7 +143,6 @@ def handle_message(msg):
         bot.reply_to(msg, error_msg, parse_mode='Markdown') 
         return
 
-    # --- ЛОГИКА ПОИСКА ---
     result = find_original(conn, user_text, lang=lang) 
 
     if not result["ok"]:
@@ -164,7 +150,7 @@ def handle_message(msg):
         bot.reply_to(msg, result['message'], parse_mode='Markdown') 
         return
 
-    user_states.pop(chat_id, None) # Сбрасываем состояние после успешного поиска
+    user_states.pop(chat_id, None)
     original = result["original"]
     copies = get_copies_by_original_id(conn, original["id"])
     
@@ -184,10 +170,9 @@ def handle_message(msg):
                  response_text, 
                  parse_mode='Markdown', 
                  disable_web_page_preview=True,
-                 reply_markup=keyboards.after_search_menu(lang)) # <-- Новое меню после поиска
+                 reply_markup=keyboards.after_search_menu(lang))
 
 
-# --- Flask веб-сервер ---
 @app.route("/", methods=["GET"])
 def index():
     return "Perfume Bot is running!", 200

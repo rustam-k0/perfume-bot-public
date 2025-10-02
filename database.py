@@ -1,4 +1,3 @@
-# perfume-bot/database.py
 import os
 import time
 import psycopg2
@@ -71,10 +70,7 @@ def log_message(conn, user_id, message, status, notes=""):
     )
     conn.commit()
 
-# --- НОВЫЕ ФУНКЦИИ ---
-
 def fetch_user_history(conn, user_id: int, limit: int = 5):
-    """Извлекает последние N уникальных успешных поисков пользователя."""
     cur = conn.cursor()
     query = """
         SELECT DISTINCT ON (notes) notes
@@ -84,7 +80,6 @@ def fetch_user_history(conn, user_id: int, limit: int = 5):
         LIMIT %s
     """
     cur.execute(query, (user_id, limit))
-    # Извлекаем только название парфюма из "notes"
     history = []
     for row in cur.fetchall():
         try:
@@ -96,7 +91,6 @@ def fetch_user_history(conn, user_id: int, limit: int = 5):
 
 
 def fetch_popular_originals(conn, limit: int = 10):
-    """Извлекает самые популярные оригиналы по количеству клонов."""
     cur = conn.cursor()
     query = """
         SELECT o.brand, o.name, COUNT(c.id) AS clone_count
@@ -111,10 +105,6 @@ def fetch_popular_originals(conn, limit: int = 10):
 
 
 def fetch_random_original(conn):
-    """Извлекает случайный оригинал из базы данных."""
     cur = conn.cursor()
-    # TABLESAMPLE SYSTEM (1) может быть неточным, но очень быстрым.
-    # ORDER BY RANDOM() медленнее на больших таблицах. Выбираем его для точности.
     cur.execute("SELECT id, brand, name FROM OriginalPerfume ORDER BY RANDOM() LIMIT 1")
     return _convert_dict_row(cur.fetchone())
-
