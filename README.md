@@ -2,6 +2,28 @@
 
 **Perfume Twins** helps users discover affordable alternatives to expensive original perfumes. By querying the bot, users can find "dupes" or clones that match the scent profile of luxury brands, complete with price comparisons and direct purchase links.
 
+### 📱 Bot Preview
+
+These screenshots show the main user flow: opening the bot, browsing popular fragrances, and finding affordable alternatives for a specific scent.
+
+#### 1. Main Menu
+
+Users start from a simple menu with the core actions: search, popular picks, history, and language switching.
+
+![Main menu of the Perfume Twins Telegram bot](assets/screenshots/main-menu.jpg)
+
+#### 2. Popular Fragrances
+
+The bot can surface the most frequently requested fragrances, which makes exploration easier for first-time users.
+
+![Popular fragrances list in the Perfume Twins Telegram bot](assets/screenshots/popular-fragrances.jpg)
+
+#### 3. Search Results
+
+After entering a perfume name, users receive a list of cheaper alternatives with direct purchase links.
+
+![Search results with perfume dupes in the Perfume Twins Telegram bot](assets/screenshots/search-results.jpg)
+
 ### 📂 Project Structure
 
 The codebase is organized as a modular Python application using Flask (via `web.py`) for webhook handling.
