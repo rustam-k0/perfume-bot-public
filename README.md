@@ -1,125 +1,145 @@
-Perfume Bot MVP
+### 📖 About the Project
 
-Бот для поиска парфюмов и их популярных клонов с расчетом экономии.
+**Perfume Twins** helps users discover affordable alternatives to expensive original perfumes. By querying the bot, users can find "dupes" or clones that match the scent profile of luxury brands, complete with price comparisons and direct purchase links.
 
-**Ключевое обновление:** Проект переведен на **PostgreSQL** для работы в облачных средах (например, Render) и добавлена система логирования всех сообщений пользователей для аналитики.
+### 📱 Bot Preview
 
----
+These screenshots show the main user flow: opening the bot, browsing popular fragrances, and finding affordable alternatives for a specific scent.
 
-## 📂 Структура проекта
+#### 1. Main Menu
+
+Users start from a simple menu with the core actions: search, popular picks, history, and language switching.
+
+![Main menu of the Perfume Twins Telegram bot](assets/screenshots/main-menu.jpg)
+
+#### 2. Popular Fragrances
+
+The bot can surface the most frequently requested fragrances, which makes exploration easier for first-time users.
+
+![Popular fragrances list in the Perfume Twins Telegram bot](assets/screenshots/popular-fragrances.jpg)
+
+#### 3. Search Results
+
+After entering a perfume name, users receive a list of cheaper alternatives with direct purchase links.
+
+![Search results with perfume dupes in the Perfume Twins Telegram bot](assets/screenshots/search-results.jpg)
+
+### 📂 Project Structure
+
+The codebase is organized as a modular Python application using Flask (via `web.py`) for webhook handling.
+
+```text
+perfume-bot/
+├── web.py            # Entry point: FastAPI/Flask app & Webhook handler
+├── search.py         # Core logic: Search algorithms for matching perfumes
+├── database.py       # ORM & Database connection management
+├── formatter.py      # UI: Formats text responses for Telegram
+├── followup.py       # Logic: Handles conversation flow and user context
+├── i18n.py           # Localization: Language handling
+├── analyze_db.py     # Analytics: Script to generate DB statistics
+├── utils.py          # Helper functions
+├── requirements.txt  # Python dependencies
+└── .env              # Environment variables (Configuration)
 
 ```
 
-perfume-bot/
-│
-├── web.py         \# Запуск и обработчики Telegram, включая логирование запросов
-├── database.py    \# Работа с PostgreSQL и инициализация всех таблиц 👈
-├── search.py      \# Логика парсинга и гибкого поиска (бренд/название, fuzzy)
-├── formatter.py   \# Сборка красивого текста ответа
-├── followup.py    \# Логика "Ура\! 🎉..." (отправка 1 раз)
-├── utils.py       \# Нормализация текста, транслитерация
-├── i18n.py        \# Файл для локализации всех строковых констант
-├── analyze\_db.py  \# Скрипт для глубокой аналитики данных и поведения
-├── requirements.txt
-└── .env
+---
 
-````
+### 🗄️ Database Schema
+
+The project uses PostgreSQL. Below is the schema design for tracking users and mapping perfume relationships.
+
+#### 1. UserMessages (`UserMessages`)
+
+*Stores interaction logs for analytics and debugging.*
+
+| Column | Type | Description |
+| --- | --- | --- |
+| `id` | `SERIAL PK` | Unique Log ID |
+| `user_id` | `BIGINT` | Telegram User ID |
+| `timestamp` | `TIMESTAMP` | Time of message receipt |
+| `message` | `TEXT` | Raw text sent by user |
+| `status` | `TEXT` | Query outcome (e.g., `success`, `fail`) |
+| `notes` | `TEXT` | Debugging info or errors |
+
+#### 2. Original Perfumes (`OriginalPerfume`)
+
+*Catalog of luxury/reference fragrances.*
+
+| Column | Type | Description |
+| --- | --- | --- |
+| `id` | `TEXT PK` | Unique SKU/ID |
+| `brand` | `TEXT` | Brand Name (e.g., "Tom Ford") |
+| `name` | `TEXT` | Perfume Name (e.g., "Tobacco Vanille") |
+| `price_eur` | `REAL` | Market Price (€) |
+| `url` | `TEXT` | Link to official product page |
+
+#### 3. Clones / Alternatives (`CopyPerfume`)
+
+*Budget-friendly alternatives linked to originals.*
+
+| Column | Type | Description |
+| --- | --- | --- |
+| `id` | `TEXT PK` | Unique SKU/ID |
+| `original_id` | `TEXT` | **FK** linking to `OriginalPerfume.id` |
+| `brand` | `TEXT` | Clone Brand (e.g., "Lattafa") |
+| `name` | `TEXT` | Clone Name |
+| `price_eur` | `REAL` | Market Price (€) |
+| `saved_amount` | `REAL` | Calculated savings %: `(orig - dupe) / orig * 100` |
+| `url` | `TEXT` | Link to purchase |
+| `notes` | `TEXT` | Scent notes or specific differences |
 
 ---
 
-## 🗄️ Структура базы данных (PostgreSQL)
+### 🚀 Installation & Setup
 
-База данных состоит из **трех** основных таблиц:
+**Prerequisites:** Python 3.9+, PostgreSQL.
 
-### 1. Таблица `UserMessages` (Логирование)
+**1. Install Dependencies**
 
-Хранит историю всех запросов пользователей для аналитики и поиска ошибок.
+```bash
+pip install -r requirements.txt
 
-| Колонка | Тип данных | Описание |
-| :--- | :--- | :--- |
-| `id` | `SERIAL PRIMARY KEY` | Уникальный id |
-| `user_id` | `BIGINT` | Telegram user ID |
-| `timestamp` | `TIMESTAMP WITH TIME ZONE` | Время сообщения |
-| `message` | `TEXT` | Исходный текст сообщения |
-| `status` | `TEXT` | Статус (e.g., `success`, `fail`, `start_command`) |
-| `notes` | `TEXT` | Дополнительные примечания (e.g., Fuzzy Match, причина ошибки) |
+```
 
-### 2. Таблица `OriginalPerfume` (Оригиналы)
+**2. Configuration**
+Create a `.env` file in the root directory:
 
-Хранит информацию об оригинальных дорогих парфюмах.
+```ini
+# Telegram API
+BOTTOKEN="your_telegram_bot_token"
+WEBHOOKURL="https://your-domain.com/webhook"
+BOT_LANG="ru" 
 
-| Колонка | Тип данных | Описание |
-| :--- | :--- | :--- |
-| `id` | `TEXT PRIMARY KEY` | Уникальный ID (Primary Key) |
-| `brand` | `TEXT` | Бренд оригинала |
-| `name` | `TEXT` | Название оригинала |
-| `price_eur` | `REAL` | Цена оригинала в евро |
-| `url` | `TEXT` | Ссылка на страницу оригинала |
+# Database
+DATABASE_URL="postgresql://user:password@localhost:5432/dbname"
 
-### 3. Таблица `CopyPerfume` (Клоны/Аналоги)
+```
 
-Хранит информацию о копиях парфюмов, связанных с оригиналом.
+**3. Run the Bot**
+Use Gunicorn to serve the application in production:
 
-| Колонка | Тип данных | Описание |
-| :--- | :--- | :--- |
-| `id` | `TEXT PRIMARY KEY` | Уникальный id (Primary Key) |
-| `original_id` | `TEXT` | Ссылка на `id` из таблицы `OriginalPerfume` (`FOREIGN KEY`) |
-| `brand` | `TEXT` | Бренд клона |
-| `name` | `TEXT` | Название клона |
-| `price_eur` | `REAL` | Цена клона в евро |
-| `url` | `TEXT` | Ссылка на клон |
-| `notes` | `TEXT` | Примечания к аромату |
-| `saved_amount` | `REAL` | Экономия в %: `(orig_price_eur - dupe_price_eur) / orig_price_eur * 100` |
+```bash
+gunicorn web:app
+
+```
 
 ---
 
-## 🚀 Запуск проекта
+### 📊 Analytics
 
-1.  **Установите зависимости:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+Run the analytics script to view database health and user query performance.
 
-2.  **Настройте переменные окружения:**
-    Создайте файл `.env` в корневой директории и укажите **все** необходимые переменные.
+```bash
+python3 analyze_db.py
 
-    ```
-    # --- НАСТРОЙКИ БОТА ---
-    BOT_TOKEN="ВАШ_ТОКЕН_ЗДЕСЬ"
-    WEBHOOK_URL="ВАШ_WEBHOOK_URL_НА_RENDER"
-    # Опционально: Язык бота (ru или en). По умолчанию ru.
-    BOT_LANG="ru"
+```
 
-    # --- НАСТРОЙКИ POSTGRESQL ---
-    # Переменная, которую использует Render.
-    DATABASE_URL="postgresql://perfume_bot_public_posgresql_user:kIlMPx2gsC9uACxwMMk5KckZ4WaOsWit@dpg-d3c11k2li9vc73d6lee0-a/perfume_bot_public_posgresql"
-    ```
+**Output Includes:**
 
-3.  **Запустите бота:**
-    Для работы через вебхук на Render вам, вероятно, понадобится `gunicorn` или аналогичный WSGI-сервер.
-
-    ```bash
-    gunicorn web:app
-    ```
-
----
-
-## 🔬 Анализ базы данных
-
-Используйте файл **`analyze_db.py`** для быстрого доступа к ключевой информации.
-
-1.  **Убедитесь, что `DATABASE_URL` установлен** (см. выше).
-2.  **Запустите скрипт:**
-
-    ```bash
-    python analyze_db.py
-    ```
-
-    Скрипт выведет:
-    * Общее количество Оригиналов и Клонов.
-    * 5 последних добавленных парфюмов.
-    * 5 клонов с наибольшей экономией.
-    * Общую статистику по запросам пользователей (`success`, `fail`, `start_command`).
-    * 10 последних **неудачных** запросов для анализа, что не нашёл бот.
-    * 10 последних **успешных, но неточных** запросов (Fuzzy Match).
-````
+* **Inventory:** Total count of Originals vs. Clones.
+* **Recents:** 5 most recently added perfumes.
+* **Top Savers:** 5 clones offering the highest percentage savings.
+* **Performance:** Query stats (`success` vs `fail` rates).
+* **Misses:** Last 10 failed queries (useful for filling DB gaps).
+* **Fuzzy Logic:** Last 10 fuzzy matches (to check search accuracy).

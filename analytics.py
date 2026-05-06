@@ -1,27 +1,21 @@
 import os
 import sys
 from datetime import datetime
-# Предполагается, что get_connection() использует psycopg2 и DATABASE_URL
-from database import get_connection 
+from database import get_connection
 from dotenv import load_dotenv
 
-# Загружаем переменные окружения для DATABASE_URL
 load_dotenv()
 
-def run_analytics():
+def run_analytics(user_id_to_track=None):
     print("=============================================================")
     print("         ✨ РАСШИРЕННАЯ АНАЛИТИКА PERFUME BOT ✨")
     print("=============================================================")
     
     conn = None
     try:
-        # Устанавливаем соединение с базой данных
         conn = get_connection()
         cur = conn.cursor()
 
-        # ----------------------------------------------------
-        # 1. Сводка по базе данных и пользователям
-        # ----------------------------------------------------
         print("\n--- 1. СВОДКА ПО БАЗЕ ДАННЫХ И ПОЛЬЗОВАТЕЛЯМ ---")
         
         cur.execute("SELECT COUNT(*) FROM OriginalPerfume")
@@ -38,11 +32,8 @@ def run_analytics():
         unique_users = cur.fetchone()[0]
         print(f"✅ Уникальных пользователей: {unique_users}")
         
-        # ----------------------------------------------------
-        # 2. Популярность (По числу клонов)
-        # ----------------------------------------------------
         print("\n--- 2. САМЫЕ ПОПУЛЯРНЫЕ ОРИГИНАЛЫ (ПО ЧИСЛУ КЛОНОВ) ---")
-        # Оригиналы, на которые есть больше всего клонов - показатель популярности
+        
         cur.execute("""
             SELECT 
                 o.brand, 
@@ -59,10 +50,8 @@ def run_analytics():
         for i, row in enumerate(popular_by_clone):
             print(f"  {i+1}. {row['brand']} - {row['name']} | Клонов: {row['num_clones']}")
 
-        # ----------------------------------------------------
-        # 3. Экономия
-        # ----------------------------------------------------
         print("\n--- 3. ТОП-5 КЛОНОВ С НАИБОЛЬШЕЙ ЭКОНОМИЕЙ (saved_amount) ---")
+        
         cur.execute("""
             SELECT 
                 c.brand, 
@@ -84,12 +73,9 @@ def run_analytics():
                 print(f"  {i+1}. {row['brand']} {row['name']} -> {row['original_brand']} {row['original_name']} | Экономия: {saved_amount}")
         else:
             print("Нет данных об экономии (saved_amount).")
-            
-        # ----------------------------------------------------
-        # 4. Самые искомые парфюмы (Предпочтения пользователей)
-        # ----------------------------------------------------
+
         print("\n--- 4. САМЫЕ ИСКОМЫЕ ПАРФЮМЫ (ТОП-10 УСПЕШНЫХ ЗАПРОСОВ) ---")
-        # Извлекаем найденный парфюм из лога status='success'
+        
         cur.execute("""
             SELECT 
                 TRIM(SUBSTRING(notes FROM 'Found: (.*)')) AS found_perfume, 
@@ -103,15 +89,11 @@ def run_analytics():
         top_searched = cur.fetchall()
         
         for i, row in enumerate(top_searched):
-            # Очистка от заметки NOTE, если она есть в конце строки
             perfume_name = row['found_perfume'].split(' | NOTE: ')[0] 
             print(f"  {i+1}. {perfume_name} | Успешных поисков: {row['success_count']}")
 
-        # ----------------------------------------------------
-        # 5. Сообщения с ошибкой (Для улучшения базы)
-        # ----------------------------------------------------
         print("\n--- 5. ТОП-10 НЕУСПЕШНЫХ ЗАПРОСОВ (Для добавления в базу) ---")
-        # Что пользователи чаще всего ищут, но не находят (status = 'fail')
+        
         cur.execute("""
             SELECT 
                 message, 
@@ -129,10 +111,8 @@ def run_analytics():
             msg_preview = row['message'][:50] + '...' if len(row['message']) > 50 else row['message']
             print(f"  {i+1}. '{msg_preview}' | Ошибок: {row['fail_count']} | Причина: {row['last_note']}")
 
-        # ----------------------------------------------------
-        # 6. Активность пользователей
-        # ----------------------------------------------------
         print("\n--- 6. ТОП-5 САМЫХ АКТИВНЫХ ПОЛЬЗОВАТЕЛЕЙ (Предпочтения) ---")
+        
         cur.execute("""
             SELECT 
                 user_id, 
@@ -146,11 +126,58 @@ def run_analytics():
         top_users = cur.fetchall()
 
         for i, row in enumerate(top_users):
-            # Преобразование метки времени PostgreSQL в читаемый формат
             last_active_dt = row['last_activity'].strftime('%Y-%m-%d %H:%M:%S')
             print(f"  {i+1}. User ID: {row['user_id']} | Сообщений: {row['total_msgs']} | Последняя активность: {last_active_dt}")
 
+        if user_id_to_track is not None:
+            
+            print(f"\n=============================================================")
+            print(f"     🕵️‍♂️ АНАЛИТИКА ПОВЕДЕНИЯ ПОЛЬЗОВАТЕЛЯ ID: {user_id_to_track} 🕵️‍♂️")
+            print(f"=============================================================")
+            
+            print("\n--- 7.1. УСПЕШНЫЕ ЗАПРОСЫ ПОЛЬЗОВАТЕЛЯ ---")
+            cur.execute("""
+                SELECT 
+                    TRIM(SUBSTRING(notes FROM 'Found: (.*)')) AS found_perfume, 
+                    COUNT(*) AS success_count,
+                    MAX(timestamp) AS last_search
+                FROM UserMessages
+                WHERE status = 'success' AND notes LIKE 'Found: %%' AND user_id = %s
+                GROUP BY found_perfume
+                ORDER BY success_count DESC
+            """, (user_id_to_track,))
+            user_success = cur.fetchall()
 
+            if user_success:
+                for i, row in enumerate(user_success):
+                    perfume_name = row['found_perfume'].split(' | NOTE: ')[0]
+                    last_search_dt = row['last_search'].strftime('%Y-%m-%d %H:%M:%S')
+                    print(f"  {i+1}. {perfume_name} | Поисков: {row['success_count']} | Последний: {last_search_dt}")
+            else:
+                print("Нет успешных запросов от этого пользователя.")
+
+            print("\n--- 7.2. НЕУСПЕШНЫЕ ЗАПРОСЫ ПОЛЬЗОВАТЕЛЯ ---")
+            cur.execute("""
+                SELECT 
+                    message, 
+                    COUNT(*) AS fail_count,
+                    MAX(notes) AS last_note,
+                    MAX(timestamp) AS last_fail
+                FROM UserMessages
+                WHERE status = 'fail' AND message NOT IN ('/start') AND user_id = %s
+                GROUP BY message
+                ORDER BY fail_count DESC
+            """, (user_id_to_track,))
+            user_fails = cur.fetchall()
+
+            if user_fails:
+                for i, row in enumerate(user_fails):
+                    msg_preview = row['message'][:50] + '...' if len(row['message']) > 50 else row['message']
+                    last_fail_dt = row['last_fail'].strftime('%Y-%m-%d %H:%M:%S')
+                    print(f"  {i+1}. '{msg_preview}' | Ошибок: {row['fail_count']} | Причина: {row['last_note']} | Последний: {last_fail_dt}")
+            else:
+                print("Нет неуспешных запросов от этого пользователя.")
+        
     except Exception as e:
         print(f"\n❌ Произошла ошибка во время выполнения аналитики: {e}")
         print("💡 Убедитесь, что переменная среды **DATABASE_URL** корректно настроена и база данных доступна.")
@@ -163,4 +190,12 @@ def run_analytics():
         print("=============================================================")
 
 if __name__ == '__main__':
-    run_analytics()
+    if len(sys.argv) > 1:
+        try:
+            user_id = int(sys.argv[1])
+            run_analytics(user_id_to_track=user_id)
+        except ValueError:
+            print(f"❌ Ошибка: '{sys.argv[1]}' не является корректным ID пользователя (целым числом).")
+            sys.exit(1)
+    else:
+        run_analytics()

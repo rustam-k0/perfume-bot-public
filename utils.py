@@ -1,6 +1,3 @@
-# perfume-bot/utils.py
-# Вспомогательные функции: нормализация строк и транслитерация.
-
 import re, unicodedata
 
 def normalize_for_match(s: str) -> str:
